@@ -7,44 +7,33 @@
 # All rights reserved - Do Not Redistribute
 #
 
-## to get the bootstrap script
-package 'wget'
+include_recipe 'docker'
 
-## make sure we have apt-add-repository
-package 'python-software-properties'
-package 'software-properties-common'
-
-tag  = node[:dokku][:tag]
-root = node[:dokku][:root]
-version = File.join(root, 'VERSION')
-
-## run default dokku install
-bash 'dokku-bootstrap' do
-  code "wget -qO- https://raw.github.com/progrium/dokku/#{tag}/bootstrap.sh | sudo DOKKU_TAG=#{tag} DOKKU_ROOT=#{root} bash"
-  not_if do
-    File.exists?(version) and (File.open(version).read.chomp == tag)
-  end
-end
-
-## loop through users adding all their keys from data_bag users
-node[:dokku][:ssh_users].each do |user|
-  keys = data_bag_item('users', user).fetch('ssh_keys', [])
-  Array(keys).each_with_index do |key, index|
-    bash 'sshcommand-acl-add' do
-      cwd root
-      code "echo '#{key}' | sshcommand acl-add dokku #{user}-#{index}"
-    end
-  end
-end
-
-## setup domain, you need this unless host can resolve dig +short $(hostname -f) 
+root = '/home/dokku'
 vhost = node[:dokku][:vhost]
+
+execute "echo 'dokku dokku/web_config boolean false' | debconf-set-selections"
+execute "echo 'dokku dokku/key_file string /tmp/dokku.pub' | debconf-set-selections"
 if vhost
-  file File.join(root, 'VHOST') do
-    owner 'dokku'
-    content vhost
-    action :create
-  end
+  execute "echo 'dokku dokku/vhost_enable boolean true' | debconf-set-selections"
+  execute "echo 'dokku dokku/hostname string #{vhost}' | debconf-set-selections"
+end
+
+file '/tmp/dokku.pub' do
+  content node[:dokku][:public_key]
+  mode 00600
+end
+
+apt_repository 'dokku' do
+  uri         'https://packagecloud.io/dokku/dokku/ubuntu/'
+  components  ['main']
+  key         'https://packagecloud.io/gpg.key'
+  distribution node['lsb']['codename']
+end
+
+
+package 'dokku' do
+  version node[:dokku][:version]
 end
 
 ## setup env vars for listed apps
