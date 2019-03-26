@@ -34,6 +34,7 @@ end
 
 package 'dokku' do
   version node[:dokku][:version]
+  options '--force-yes'
 end
 
 ## setup env vars for listed apps
